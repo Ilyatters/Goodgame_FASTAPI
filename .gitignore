@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+
+# Файлы настроек
+.env
+*.log
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+
+# Бинарные файлы
+*.zip
+*.jpg
+*.png
+*.pdf

@@ -197,7 +197,7 @@ class ModelFastai:
 
         try:
             # Читаем данные из CSV файла
-            self.df_duration = pd.read_csv('channels_big_data.csv')
+            self.df_duration = pd.read_csv('data.csv')
 
             self.df_duration = self.df_duration.copy()
             self.df_duration = self.df_duration.drop(columns=['streamer_id', 'user'])  # Удаляем колонку
@@ -205,10 +205,10 @@ class ModelFastai:
             # Преобразуем столбец 'time' в формат datetime для работы с датой и временем
             self.df_duration['time'] = pd.to_datetime(self.df_duration['time'])
 
-            #start_date = pd.to_datetime('2025-02-20')
-            #end_date = pd.to_datetime('2025-03-22')
+            start_date = pd.to_datetime('2025-02-20')
+            end_date = pd.to_datetime('2025-03-22')
             
-            #self.df_duration = self.df_duration[(self.df_duration['time'] >= start_date) & (self.df_duration['time'] <= end_date)]
+            self.df_duration = self.df_duration[(self.df_duration['time'] >= start_date) & (self.df_duration['time'] <= end_date)]
             print('-' * 100)
             print('Вывод первых и последних строк загруженной таблицы для наглядности')
             print(self.df_duration.head(-5))
@@ -264,7 +264,7 @@ class ModelFastai:
             return answer
     
         # --- Находим самые популярные каналы - составляем список из 100 каналов ---
-        self.popular_list = df.groupby(['channel_id']).size().sort_values(ascending=False)[0:300].tolist()
+        self.popular_list = df.groupby(['channel_id']).size().sort_values(ascending=False)[0:100].tolist()
 
         print('-' * 100)
         print("Находим самые популярные каналы - составляем список из 100 каналов")
@@ -272,7 +272,6 @@ class ModelFastai:
         print('-' * 100)
         print(f"Нашли топ {len(self.popular_list)} каналов") 
 
-        # --- Удаляем стримы с небольшим количество просмотров (20% от среднего) ---
         # Находим среднее число просмотров стрима
         view_mean = df.groupby(['channel_id']).size().mean()
         print('-' * 100)
@@ -372,7 +371,7 @@ class ModelFastai:
         #learn.fit_one_cycle(5, 5e-3, wd=0.1)
 
         # инициализация модели
-        self.model = collab_learner(dls, n_factors=128, y_range=[0, 5], wd=0.3)
+        self.model = collab_learner(dls, n_factors=32, y_range=[0, 5], wd=0.3)
         #self.model = collab_learner(dls, use_nn=True, layers=[32, 12], y_range=[0.5, 5.5], wd=0.2)
         print(self.model.model) # справка по модели
 

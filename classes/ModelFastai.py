@@ -5,6 +5,7 @@ import time
 import datetime
 import warnings
 from datetime import datetime
+from attr import validate
 import requests
 import pandas as pd
 import numpy as np
@@ -196,7 +197,7 @@ class ModelFastai:
 
         try:
             # Читаем данные из CSV файла
-            self.df_duration = pd.read_csv('data.csv')
+            self.df_duration = pd.read_csv('channels_big_data.csv')
 
             self.df_duration = self.df_duration.copy()
             self.df_duration = self.df_duration.drop(columns=['streamer_id', 'user'])  # Удаляем колонку
@@ -204,10 +205,10 @@ class ModelFastai:
             # Преобразуем столбец 'time' в формат datetime для работы с датой и временем
             self.df_duration['time'] = pd.to_datetime(self.df_duration['time'])
 
-            start_date = pd.to_datetime('2025-02-20')
-            end_date = pd.to_datetime('2025-03-22')
+            #start_date = pd.to_datetime('2025-02-20')
+            #end_date = pd.to_datetime('2025-03-22')
             
-            self.df_duration = self.df_duration[(self.df_duration['time'] >= start_date) & (self.df_duration['time'] <= end_date)]
+            #self.df_duration = self.df_duration[(self.df_duration['time'] >= start_date) & (self.df_duration['time'] <= end_date)]
             print('-' * 100)
             print('Вывод первых и последних строк загруженной таблицы для наглядности')
             print(self.df_duration.head(-5))
@@ -263,7 +264,8 @@ class ModelFastai:
             return answer
     
         # --- Находим самые популярные каналы - составляем список из 100 каналов ---
-        self.popular_list = df.groupby(['channel_id']).size().sort_values(ascending=False)[0:100].tolist()
+        self.popular_list = df.groupby(['channel_id']).size().sort_values(ascending=False)[0:300].tolist()
+
         print('-' * 100)
         print("Находим самые популярные каналы - составляем список из 100 каналов")
         print(self.popular_list[:20], '......')
@@ -282,8 +284,9 @@ class ModelFastai:
         print("Таблица с подсчетом количества просмотров для каждого канала")
         print(view_counter.head(-3))
 
-        # Убираем каналы, с наименьшим количеством просмотров. 20% от среднего
-        view_counter = view_counter.loc[view_counter['Count'] > view_mean/5]  # 1/5
+        # Убираем каналы, с наименьшим количеством просмотров. Меньше двух просмотров
+        view_counter = view_counter.loc[view_counter['Count'] >= 2]
+
         print('-' * 100)
         print("Измененная таблица после удаления слабых каналов")
         print(view_counter.head(-3))
@@ -307,26 +310,22 @@ class ModelFastai:
         print('Таблица перед составлением рейтинга')
         print(self.df_final.head(-3))
 
-        # Смена имени колонок для последущей подачи в модель
-        # self.df_final=self.df_final.groupby(['user_id', 'channel_id']).sum().reset_index()
-        # self.df_final['userID']=self.df_final['user_id'].astype(str)
-        # self.df_final['itemID']=self.df_final['channel_id'].astype(str)
-        # self.df_final=self.df_final.drop(columns=['user_id'],axis = 1)
-        # self.df_final=self.df_final.drop(columns=['channel_id'],axis = 1)
-
         # Проверка данных
         print('-' * 100)
         print(f"Загружено {len(self.df_final)} записей")
         print(f"Уникальных пользователей: {self.df_final['user_id'].nunique()}")
 
-        # Подсчет и создание рейтинга
-        self.df_final['rating'] = np.where(self.df_final['duration'] < 10*1000*60, 1.0, 
-                                          # первый множитель = колво минут просмотра. 
-                                  np.where(self.df_final['duration'] < 30*1000*60, 2.0, 
-                                          # через запятую = присваиваемый рейтинг.
-                                  np.where(self.df_final['duration'] < 60*1000*60, 3.0,
-                                          # через вторую запятую пишем, что будет при ложном условии
-                                  np.where(self.df_final['duration'] < 120*1000*60,4.0,5.0))))
+        #Образуем систему рейтинга 
+        self.df_final['duration'] = np.log1p(self.df_final['duration'])  # Логарифмическое преобразование   
+        self.df_final['duration'] = self.df_final['duration'].clip(upper=90*1000*60)
+        self.df_final['rating'] = pd.qcut(self.df_final['duration'], q=5, labels=[1.0, 2.0, 3.0, 4.0, 5.0])
+
+        #all_users = self.df_final['user_id'].unique()
+        #all_channels = self.df_final['channel_id'].unique()
+        #all_pairs = pd.DataFrame(cartesian_product(all_users, all_channels), columns=['user_id', 'channel_id'])
+        #all_pairs['rating'] = 0.0
+        #self.df_final = pd.concat([self.df_final, all_pairs]).drop_duplicates(subset=['user_id', 'channel_id'], keep='first')
+
         print('-' * 100)
         print(f'Количество каналов с рейтингом 5 = {len(self.df_final[self.df_final["rating"]==5.0])}')
         print(f'Количество каналов с рейтингом 4 = {len(self.df_final[self.df_final["rating"]==4.0])}')
@@ -336,8 +335,6 @@ class ModelFastai:
 
         # чистка лишних столбцов
         self.df_final = self.df_final.drop(columns=['time', 'duration'], errors='ignore')
-        # self.df_final=self.df_final.drop(columns=['duration'],axis = 1)
-        # self.df_final=self.df_final.drop(columns=['time'],axis = 1)
         print('-' * 100)
         print('Итоговая таблица для обучения')
         print(self.df_final.head(-3))
@@ -366,20 +363,21 @@ class ModelFastai:
         print('-----MODEL FIT-----')
         start_time = time.time()
 
-        dls = CollabDataLoaders.from_df(self.df_final)
+        dls = CollabDataLoaders.from_df(self.df_final, validate_pct=0.3)
 
-        # embs = get_emb_sz(dls)
-
-        # model = DotProductBias(n_users, n_movies, 50)
-        # learn = Learner(dls, model, loss_func=MSELossFlat())
-        # learn.fit_one_cycle(5, 5e-3, wd=0.1)
+        #embs = get_emb_sz(dls)
+#
+        #model = DotProductBias(n_users, n_movies, 50)
+        #learn = Learner(dls, model, loss_func=MSELossFlat())
+        #learn.fit_one_cycle(5, 5e-3, wd=0.1)
 
         # инициализация модели
-        self.model = collab_learner(dls, n_factors=64, y_range=[0,5.5], wd=1e-1)
-        # # print(self.model.model) # справка по модели
+        self.model = collab_learner(dls, n_factors=128, y_range=[0, 5], wd=0.3)
+        #self.model = collab_learner(dls, use_nn=True, layers=[32, 12], y_range=[0.5, 5.5], wd=0.2)
+        print(self.model.model) # справка по модели
 
         # старт обучения
-        self.model.fit_one_cycle(15, 5e-3, wd=0.1)
+        self.model.fit_one_cycle(10, 5e-3, wd=0.3)
 
         # экспорт модели 
         self.model.export(self.files_path / 'model.pkl')
